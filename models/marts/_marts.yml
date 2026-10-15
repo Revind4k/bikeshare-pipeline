@@ -1,0 +1,95 @@
+version: 2
+
+models:
+  - name: fct_trips
+    description: One row per valid ride.
+    columns:
+      - name: ride_id
+        data_tests: [unique, not_null]
+      - name: rider_type
+        data_tests:
+          - accepted_values:
+              arguments: {values: [member, casual]}
+      - name: rideable_type
+        data_tests:
+          - accepted_values:
+              arguments: {values: [classic_bike, electric_bike]}
+      - name: duration_s
+        data_tests:
+          - in_range:
+              arguments: {min_value: "{{ var('min_trip_seconds') }}", max_value: "{{ var('max_trip_hours') * 3600 }}"}
+      - name: start_station_id
+        data_tests:
+          - relationships:
+              arguments: {to: ref('dim_stations'), field: station_id}
+              config: {where: "start_station_id is not null"}
+      - name: end_station_id
+        data_tests:
+          - relationships:
+              arguments: {to: ref('dim_stations'), field: station_id}
+              config: {where: "end_station_id is not null"}
+
+  - name: dim_stations
+    columns:
+      - name: station_id
+        data_tests: [unique, not_null]
+      - name: station_name
+        data_tests: [not_null]
+      - name: city
+        data_tests:
+          - accepted_values:
+              arguments: {values: [Jersey City, Hoboken, New York]}
+      - name: lat
+        data_tests:
+          - in_range:
+              arguments: {min_value: 40.5, max_value: 41.0}
+      - name: lng
+        data_tests:
+          - in_range:
+              arguments: {min_value: -74.3, max_value: -73.7}
+
+  - name: fct_daily_ridership
+    columns:
+      - name: ride_date
+        data_tests: [unique, not_null]
+      - name: weather
+        data_tests:
+          - accepted_values:
+              arguments: {values: [dry, light_rain, heavy_rain, snow]}
+
+unit_tests:
+  - name: classifies_trip_quality
+    description: Each exclusion rule fires on its own boundary, and undocked e-bike rides stay valid.
+    model: int_trips_classified
+    given:
+      - input: ref('stg_trips')
+        rows:
+          - {ride_id: ok,       started_at: "2026-09-01 08:00:00", ended_at: "2026-09-01 08:15:00", end_station_id: JC001}
+          - {ride_id: undocked, started_at: "2026-09-01 08:00:00", ended_at: "2026-09-01 08:15:00", end_station_id: null}
+          - {ride_id: at_60s,   started_at: "2026-09-01 08:00:00", ended_at: "2026-09-01 08:01:00", end_station_id: JC001}
+          - {ride_id: at_59s,   started_at: "2026-09-01 08:00:00", ended_at: "2026-09-01 08:00:59", end_station_id: JC001}
+          - {ride_id: backward, started_at: "2026-09-01 08:00:00", ended_at: "2026-09-01 07:59:00", end_station_id: JC001}
+          - {ride_id: lost,     started_at: "2026-09-01 08:00:00", ended_at: "2026-09-02 08:00:01", end_station_id: JC001}
+          - {ride_id: no_end,   started_at: "2026-09-01 08:00:00", ended_at: null,                  end_station_id: null}
+    expect:
+      rows:
+        - {ride_id: ok,       quality_flag: valid,                 ended_at_station: true}
+        - {ride_id: undocked, quality_flag: valid,                 ended_at_station: false}
+        - {ride_id: at_60s,   quality_flag: valid,                 ended_at_station: true}
+        - {ride_id: at_59s,   quality_flag: false_start,           ended_at_station: true}
+        - {ride_id: backward, quality_flag: ends_before_start,     ended_at_station: true}
+        - {ride_id: lost,     quality_flag: over_max_duration,     ended_at_station: true}
+        - {ride_id: no_end,   quality_flag: unparseable_timestamp, ended_at_station: false}
+
+  - name: keeps_one_copy_of_month_boundary_rides
+    model: stg_trips
+    given:
+      - input: ref('base_trips')
+        rows:
+          - {ride_id: r1, started_at: "2026-08-31 23:50:00", ended_at: "2026-09-01 00:10:00", filename: "data/raw/trips/202609.csv"}
+          - {ride_id: r1, started_at: "2026-08-31 23:50:00", ended_at: "2026-09-01 00:10:00", filename: "data/raw/trips/202608.csv"}
+          - {ride_id: r2, started_at: "2026-09-02 10:00:00", ended_at: "2026-09-02 10:20:00", filename: "data/raw/trips/202609.csv"}
+    expect:
+      rows:
+        - {ride_id: r1, source_month: "202608"}
+        - {ride_id: r2, source_month: "202609"}

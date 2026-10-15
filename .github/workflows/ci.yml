@@ -1,0 +1,28 @@
+name: CI
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "17 6 8 * *"   # monthly, after Citi Bike publishes the previous month
+permissions:
+  contents: read
+jobs:
+  pipeline:
+    runs-on: ubuntu-latest
+    env:
+      DBT_PROFILES_DIR: .
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --frozen
+      - name: Lint
+        run: uv run ruff check pipeline tests_py
+      - name: Extract-step tests (offline)
+        run: uv run pytest -q
+      - name: Extract two real months
+        # Two months include a month boundary, so the duplicate-ride handling runs on real data.
+        run: uv run python -m pipeline.extract --start 2026-08 --end 2026-09
+      - name: dbt build (models, data tests, unit tests)
+        run: uv run dbt build
+      - name: Report
+        run: uv run python -m pipeline.report | tee -a "$GITHUB_STEP_SUMMARY"

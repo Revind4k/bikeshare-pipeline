@@ -1,0 +1,20 @@
+version: 2
+
+sources:
+  - name: raw
+    description: Files landed by pipeline/extract.py. Read in place by DuckDB, all columns as text, so type problems surface in staging instead of failing the load.
+    tables:
+      - name: trips
+        description: Citi Bike Jersey City trip files, one CSV per month (s3.amazonaws.com/tripdata).
+        meta:
+          external_location: "read_csv('{{ env_var('BIKESHARE_RAW', 'data/raw') }}/trips/*.csv', header = true, all_varchar = true, filename = true)"
+        columns:
+          - name: ride_id
+            data_tests: [not_null]
+      - name: weather
+        description: Open-Meteo daily archive for Jersey City, local (America/New_York) days.
+        meta:
+          external_location: "read_csv('{{ env_var('BIKESHARE_RAW', 'data/raw') }}/weather/daily.csv', header = true)"
+        columns:
+          - name: date
+            data_tests: [unique, not_null]

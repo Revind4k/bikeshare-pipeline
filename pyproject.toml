@@ -1,0 +1,29 @@
+[project]
+name = "bikeshare-pipeline"
+version = "0.1.0"
+description = "Citi Bike Jersey City + Hoboken trips and daily weather: Python extract, DuckDB, dbt models and tests."
+authors = [
+    { name = "Eren Han Yasar", email = "drknse@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "dbt-duckdb>=1.11.0",
+    "duckdb>=1.5.6",
+    "httpx>=0.28.1",
+]
+
+[tool.uv]
+package = false
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "ruff>=0.17.1",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests_py"]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 130

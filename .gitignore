@@ -1,0 +1,11 @@
+data/
+target/
+dbt_packages/
+logs/
+*.duckdb
+*.duckdb.wal
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.user.yml

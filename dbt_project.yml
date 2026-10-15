@@ -1,0 +1,31 @@
+name: bikeshare
+version: "1.0.0"
+config-version: 2
+profile: bikeshare
+
+model-paths: ["models"]
+test-paths: ["tests"]
+macro-paths: ["macros"]
+analysis-paths: ["analyses"]
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+
+models:
+  bikeshare:
+    staging:
+      +materialized: view
+    intermediate:
+      +materialized: view
+    marts:
+      +materialized: table
+
+vars:
+  # Citi Bike's published methodology drops trips under 60 s (false starts / re-docks).
+  min_trip_seconds: 60
+  # Longer than this is a lost, stolen or never-docked bike, not a ride.
+  max_trip_hours: 24
+  # Daily precipitation thresholds (mm) for the weather buckets.
+  light_rain_mm: 1
+  heavy_rain_mm: 10
+  # Open-Meteo reports trace snowfall on many cold days; under 1 cm doesn't keep riders home.
+  snow_cm: 1
