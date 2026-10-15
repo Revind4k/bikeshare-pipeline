@@ -13,7 +13,7 @@ jobs:
       DBT_PROFILES_DIR: .
     steps:
       - uses: actions/checkout@v5
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v7
       - run: uv sync --frozen
       - name: Lint
         run: uv run ruff check pipeline tests_py
