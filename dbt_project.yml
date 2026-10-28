@@ -29,3 +29,5 @@ vars:
   heavy_rain_mm: 10
   # Open-Meteo reports trace snowfall on many cold days; under 1 cm doesn't keep riders home.
   snow_cm: 1
+  # Top of the temperature bands in rpt_temperature_effect; hotter days share one band.
+  temp_band_top_c: 35

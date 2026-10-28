@@ -57,6 +57,12 @@ models:
           - accepted_values:
               arguments: {values: [dry, light_rain, heavy_rain, snow]}
 
+  - name: rpt_temperature_effect
+    description: Dry-day ridership by 5 °C band of the daily high, split by weekday/weekend.
+    columns:
+      - name: temp_band
+        data_tests: [not_null]
+
 unit_tests:
   - name: classifies_trip_quality
     description: Each exclusion rule fires on its own boundary, and undocked e-bike rides stay valid.
@@ -93,3 +99,22 @@ unit_tests:
       rows:
         - {ride_id: r1, source_month: "202608"}
         - {ride_id: r2, source_month: "202609"}
+
+  - name: bands_temperatures_at_their_edges
+    description: Each band includes its lower edge, sub-zero and very hot days get their own bands, and wet days are left out.
+    model: rpt_temperature_effect
+    given:
+      - input: ref('fct_daily_ridership')
+        rows:
+          - {weather: dry,        is_weekend: false, temp_max_c: -0.1, rides: 100, member_rides: 90, casual_rides: 10}
+          - {weather: dry,        is_weekend: false, temp_max_c: 0.0,  rides: 200, member_rides: 180, casual_rides: 20}
+          - {weather: dry,        is_weekend: false, temp_max_c: 4.9,  rides: 400, member_rides: 360, casual_rides: 40}
+          - {weather: dry,        is_weekend: false, temp_max_c: 5.0,  rides: 500, member_rides: 400, casual_rides: 100}
+          - {weather: dry,        is_weekend: false, temp_max_c: 35.0, rides: 300, member_rides: 240, casual_rides: 60}
+          - {weather: heavy_rain, is_weekend: false, temp_max_c: 20.0, rides: 50,  member_rides: 45, casual_rides: 5}
+    expect:
+      rows:
+        - {band_order: 0, temp_band: "< 0 °C",  is_weekend: false, days: 1, avg_rides: 100, casual_pct: 10.0}
+        - {band_order: 1, temp_band: "0–5 °C",  is_weekend: false, days: 2, avg_rides: 300, casual_pct: 10.0}
+        - {band_order: 2, temp_band: "5–10 °C", is_weekend: false, days: 1, avg_rides: 500, casual_pct: 20.0}
+        - {band_order: 8, temp_band: "≥ 35 °C", is_weekend: false, days: 1, avg_rides: 300, casual_pct: 20.0}

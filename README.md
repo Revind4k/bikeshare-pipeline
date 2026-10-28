@@ -1,6 +1,6 @@
 # bikeshare-pipeline
 
-How much does weather cut bike-share ridership? An ELT pipeline over a year of Citi Bike trips in Jersey City and Hoboken (972,092 rides, Oct 2025 – Sep 2026) joined to daily weather, built with Python, DuckDB and dbt, with 31 tests that run on every push.
+How much does weather cut bike-share ridership? An ELT pipeline over a year of Citi Bike trips in Jersey City and Hoboken (972,092 rides, Oct 2025 – Sep 2026) joined to daily weather, built with Python, DuckDB and dbt, with 25 tests that run on every push.
 
 ## Results
 
@@ -15,6 +15,21 @@ Each wet day is compared with **dry days in the same month and of the same day t
 - **Commuters keep riding; leisure riders don't.** On heavy-rain weekdays, members drop 27% and casual riders drop 37%. On weekends both fall harder, because most weekend riding is optional.
 - **Light rain barely matters on a weekday** (−6%), so a forecast of drizzle isn't a reason to pull bikes off the street.
 - **Two cities in one feed.** The "JC" files cover Jersey City (80 docks, 55% of rides) and Hoboken (34 docks, 45%). Another 384 Manhattan docks appear only as destinations: 3,048 rides crossed the Hudson.
+
+### Temperature
+
+Dry days only (rain and snow days are cooler on average, so they would blur the curve), grouped by the day's high:
+
+| Daily high | Weekday rides | Weekday casual share | Weekend rides | Weekend casual share |
+|---|---|---|---|---|
+| < 0 °C | 968 | 12% | 608 | 15% |
+| 5–10 °C | 2,118 | 14% | 1,726 | 23% |
+| 15–20 °C | 3,530 | 21% | 2,989 | 31% |
+| 25–30 °C | **3,925** | 25% | **3,765** | 37% |
+| 30–35 °C | 3,866 | 24% | 3,800 | 38% |
+
+- **Ridership roughly quadruples from freezing to warm, then plateaus.** Weekday rides climb steadily up to the 25–30 °C band and stop rising after that; the two days above 35 °C averaged 3,601, a small dip on a very small sample.
+- **Warm weather grows the casual market much faster than the commuter base.** Between sub-zero and 25–30 °C weekdays, member rides grow 3.5× (848 to 2,944) while casual rides grow 8× (119 to 981), so the casual share doubles. On weekends it goes from 15% to 37%.
 
 `make report` prints these tables from the warehouse.
 
@@ -31,7 +46,7 @@ Open-Meteo archive API ─────┘     retries, checksums,           (row
  staging     base_trips → stg_trips (typed, one row per ride)     stg_weather
  intermediate             int_trips_classified (duration + one quality verdict per row)
  marts       fct_trips (incremental) · dim_stations · fct_daily_ridership
- reports     rpt_weather_effect · rpt_trip_quality
+ reports     rpt_weather_effect · rpt_temperature_effect · rpt_trip_quality
 ```
 
 **Extract.** The bucket names files inconsistently (`JC-202510-citibike-tripdata.zip` vs `JC-202509-citibike-tripdata.csv.zip`), so keys are discovered from the bucket listing rather than guessed. Zips ship with macOS `__MACOSX/._*.csv` resource forks, which are skipped. Months split across several CSVs are joined, failing if their headers differ. Every landed file goes into `manifest.json` with its source URL, SHA-256 and row count. A re-run fetches only months that are missing or whose checksum changed; all 12 months land in about 6 seconds.
@@ -52,11 +67,11 @@ Nothing is silently dropped. `rpt_trip_quality` counts every row by verdict and 
 
 ## Tests
 
-`dbt build` runs **31 checks** and fails on any of them:
+`dbt build` runs **25 tests** and fails on any of them:
 
-- **Unit tests** (dbt 1.8+) on mocked inputs. One pins each exclusion rule at its boundary (a 60 s ride is kept, a 59 s ride is a false start, 24 h + 1 s is dropped, and an undocked e-bike ride stays valid). The other checks that a month-boundary duplicate keeps its earlier copy.
+- **Unit tests** (dbt 1.8+) on mocked inputs. One pins each exclusion rule at its boundary (a 60 s ride is kept, a 59 s ride is a false start, 24 h + 1 s is dropped, and an undocked e-bike ride stays valid). One checks that a month-boundary duplicate keeps its earlier copy. One pins the temperature bands at their edges (−0.1 °C is below zero, 5.0 °C opens the next band, 35 °C goes to the top band, wet days are excluded).
 - **Data tests.** Unique and not-null keys; accepted values for rider, bike, city and weather types; foreign keys from trips to stations; durations inside the allowed range; station coordinates inside the NYC area.
-- **Reconciliation.** Every raw row is accounted for, checked against the extract manifest.
+- **Reconciliation.** Every raw row is accounted for, checked against the extract manifest, and every dry day lands in exactly one temperature band.
 
 `pytest` covers the extract step offline using `httpx.MockTransport`: bucket pagination, both file namings, resource-fork skipping, header mismatches, checksum-based idempotency, retry on 429/5xx, no retry on 4xx, and the weather file. CI runs everything on every push, plus a monthly scheduled run against two live months of data.
 
@@ -72,7 +87,7 @@ make test lint
 
 ## Limits
 
-- This is observational, not causal. Same-month, same-day-type baselines remove season and weekday effects, but not holidays or events. With only 12 snow days, the snow figure is the least certain.
+- This is observational, not causal. Same-month, same-day-type baselines remove season and weekday effects, but not holidays or events. With only 12 snow days, the snow figure is the least certain. Temperature moves with the season, so the temperature table also carries daylight, school calendars and tourism; it describes the pattern, it doesn't isolate heat as the cause.
 - Weather is one grid point (Open-Meteo reanalysis near Grove St) for both cities.
 - Station IDs carry the city: `JC…` is Jersey City, `HB…` is Hoboken, and numeric IDs are New York. That prefix rule is inferred from the data, not a documented contract.
 
